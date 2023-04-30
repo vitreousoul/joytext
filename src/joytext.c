@@ -223,7 +223,7 @@ static result TestJoyText(buffer *Buffer)
     result InitResult = Init();
     if(InitResult == result_Error)
     {
-        printf("Init error");
+        printf("Init error\n");
         return 1;
     }
     Window = SDL_CreateWindow("joytext", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
