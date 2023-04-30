@@ -14,6 +14,16 @@ typedef uint8_t u8;
 
 typedef uint32_t b32;
 
+typedef float f32;
+
+typedef size_t size;
+
+typedef struct
+{
+    s32 Count;
+    u8 *Data;
+} buffer;
+
 typedef enum
 {
     result_Ok,
@@ -23,4 +33,5 @@ typedef enum
 typedef struct
 {
     b32 Running;
+    s32 StartingBaseline;
 } state;

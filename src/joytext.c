@@ -1,7 +1,7 @@
 #include "joytext.h"
 
-#define SCREEN_WIDTH 400
-#define SCREEN_HEIGHT 500
+#define SCREEN_WIDTH 600
+#define SCREEN_HEIGHT 700
 
 #define FONT_HEIGHT_IN_PIXELS 24.0
 
@@ -10,6 +10,38 @@ u8 temp_bitmap[512*512];
 
 stbtt_bakedchar cdata[96]; // ASCII 32..126 is 95 glyphs
 GLuint ftex;
+
+static buffer *AllocateBuffer(s32 Count)
+{
+    s32 CharCount = Count + 1;
+    size AllocationSize = sizeof(buffer) + (CharCount * sizeof(u8));
+    buffer *Result = malloc(AllocationSize);
+    Result->Count = CharCount;
+    Result->Data = (u8 *)(Result + sizeof(buffer));
+    return Result;
+}
+
+static buffer *ReadFileIntoBuffer(char *FilePath)
+{
+    s32 FileSize;
+    FILE *File = fopen(FilePath, "rb");
+    buffer *Result = 0;
+    if(!File)
+    {
+        printf("ERROR opening file %s\n", FilePath);
+    }
+    else
+    {
+        fseek(File, 0, SEEK_END);
+        FileSize = ftell(File);
+        Result = AllocateBuffer(FileSize);
+        fseek(File, 0, SEEK_SET);
+        fread(Result->Data, 1, FileSize, File);
+        Result->Data[Result->Count - 1] = 0;
+        fclose(File);
+    }
+    return Result;
+}
 
 static void InitFont(void)
 {
@@ -43,27 +75,43 @@ static void PrepForDrawingText(void)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-static void PrintText(float x, float y, u8 text[])
+static void PrintText(float x, float y, u8 text[], s32 Count)
 {
-    PrepForDrawingText();
+    s32 I;
     glColor3f(1,1,1);
     glBindTexture(GL_TEXTURE_2D, ftex);
     glBegin(GL_QUADS);
     glColor3f(0.80, 0.90, 0.90);
-    while (*text)
+    for(I = 0; I < Count; ++I)
     {
-        if (*text >= 32 && *text < 128)
-        {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(cdata, 512,512, *text-32, &x,&y,&q,1);//1=opengl & d3d10+,0=d3d9
-            glTexCoord2f(q.s0,q.t0); glVertex2f(q.x0,q.y0);
-            glTexCoord2f(q.s1,q.t0); glVertex2f(q.x1,q.y0);
-            glTexCoord2f(q.s1,q.t1); glVertex2f(q.x1,q.y1);
-            glTexCoord2f(q.s0,q.t1); glVertex2f(q.x0,q.y1);
-        }
-        ++text;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(cdata, 512,512, text[I]-32, &x,&y,&q,1);//1=opengl & d3d10+,0=d3d9
+        glTexCoord2f(q.s0,q.t0); glVertex2f(q.x0,q.y0);
+        glTexCoord2f(q.s1,q.t0); glVertex2f(q.x1,q.y0);
+        glTexCoord2f(q.s1,q.t1); glVertex2f(q.x1,q.y1);
+        glTexCoord2f(q.s0,q.t1); glVertex2f(q.x0,q.y1);
     }
     glEnd();
+}
+
+static void PrintBuffer(state *State, buffer *Buffer)
+{
+    u8 *Text = Buffer->Data;
+    s32 I;
+    s32 Count = 0, Baseline = State->StartingBaseline;
+    PrepForDrawingText();
+    for(I = 0; I < Buffer->Count; ++I)
+    {
+        u8 Char = Buffer->Data[I];
+        if(Char == '\n')
+        {
+            PrintText(0, Baseline, Text, Count);
+            Count = 0;
+            Text = &Buffer->Data[I] + 1;
+            Baseline += FONT_HEIGHT_IN_PIXELS;
+        }
+        ++Count;
+    }
 }
 
 static result Init()
@@ -117,8 +165,13 @@ static void HandleEvents(state *State)
         {
             switch(Event.key.keysym.sym)
             {
-            case SDLK_w:
+            case SDLK_j:
             {
+                State->StartingBaseline -= FONT_HEIGHT_IN_PIXELS;
+            } break;
+            case SDLK_k:
+            {
+                State->StartingBaseline += FONT_HEIGHT_IN_PIXELS;
             } break;
             }
         } break;
@@ -145,15 +198,16 @@ static void HandleEvents(state *State)
     }
 }
 
-static result TestJoyText(void)
+static result TestJoyText(buffer *Buffer)
 {
     result Result = result_Ok;
     u32 DelayInMilliseconds = 16;
     state State;
+    State.Running = 1;
+    State.StartingBaseline = 24;
     SDL_Window *Window;
     SDL_GLContext GLContext;
     result InitResult = Init();
-    char DEBUG_TextBuffer[1024];
     if(InitResult == result_Error)
     {
         printf("Init error");
@@ -177,8 +231,7 @@ static result TestJoyText(void)
     while(State.Running)
     {
         HandleEvents(&State);
-        sprintf(DEBUG_TextBuffer, "%llu", SDL_GetTicks64());
-        PrintText(10.0, 20.0, (u8 *)"PjtjLT");
+        PrintBuffer(&State, Buffer);
         SDL_GL_SwapWindow(Window);
         SDL_Delay(DelayInMilliseconds); // TODO: figure out when to sleep, only when non-vsync?
     }
@@ -189,6 +242,11 @@ static result TestJoyText(void)
 int main(void)
 {
     s32 Result = 0;
-    TestJoyText();
+    buffer *Buffer = ReadFileIntoBuffer("../src/joytext.c");
+    if(!Buffer)
+    {
+        printf("ERROR reading file into buffer\n");
+    }
+    TestJoyText(Buffer);
     return Result;
 }
