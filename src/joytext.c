@@ -4,6 +4,7 @@
 #define SCREEN_HEIGHT 700
 
 #define FONT_HEIGHT_IN_PIXELS 24.0
+#define FONT_HEIGHT_IN_PIXELS_INT 24
 
 u8 ttf_buffer[1<<20];
 u8 temp_bitmap[512*512];
@@ -92,21 +93,30 @@ static void PrintText(float x, float y, u8 text[], s32 Count)
     glEnd();
 }
 
-static void PrintBuffer(state *State, buffer *Buffer)
+char DEBUGTEXT[64];
+static void PrintBuffer(state *State, buffer *Buffer, s32 OffsetY)
 {
     u8 *Text = Buffer->Data;
     s32 I;
-    s32 Count = 0, Baseline = State->StartingBaseline;
+    s32 LineNumber = 1, Count = 0, Baseline = State->StartingBaseline;
+    memset(DEBUGTEXT, 0, 64);
     PrepForDrawingText();
     for(I = 0; I < Buffer->Count; ++I)
     {
         u8 Char = Buffer->Data[I];
         if(Char == '\n')
         {
-            PrintText(0, Baseline, Text, Count);
-            Count = 0;
+            b32 LineVisible = Baseline > -FONT_HEIGHT_IN_PIXELS_INT && Baseline < SCREEN_HEIGHT;
+            if(LineVisible)
+            {
+                sprintf(DEBUGTEXT, "%d", LineNumber);
+                PrintText(0, Baseline + OffsetY, (u8 *)DEBUGTEXT, 64);
+                PrintText(64, Baseline + OffsetY, Text, Count);
+            }
+            ++LineNumber;
             Text = &Buffer->Data[I] + 1;
-            Baseline += FONT_HEIGHT_IN_PIXELS;
+            Count = 0;
+            Baseline += FONT_HEIGHT_IN_PIXELS_INT;
         }
         ++Count;
     }
@@ -163,10 +173,12 @@ static void HandleEvents(state *State)
         {
             switch(Event.key.keysym.sym)
             {
+            case SDLK_DOWN:
             case SDLK_j:
             {
                 State->StartingBaseline -= FONT_HEIGHT_IN_PIXELS;
             } break;
+            case SDLK_UP:
             case SDLK_k:
             {
                 State->StartingBaseline += FONT_HEIGHT_IN_PIXELS;
@@ -201,6 +213,7 @@ static result TestJoyText(buffer *Buffer)
 {
     result Result = result_Ok;
     u32 DelayInMilliseconds = 16;
+    u32 DebugDisplayHeight = 48;
     u64 SleepTime, Now, UpdateTime, Max = 0;
     state State;
     State.Running = 1;
@@ -234,7 +247,7 @@ static result TestJoyText(buffer *Buffer)
         Now = SDL_GetTicks64();
         HandleEvents(&State);
         glColor3f(0.80, 0.90, 0.90);
-        PrintBuffer(&State, Buffer);
+        PrintBuffer(&State, Buffer, DebugDisplayHeight);
         glColor3f(0,0,0);
         PrintText(0, 20, DebugText, -1);
         SDL_GL_SwapWindow(Window);
@@ -246,7 +259,7 @@ static result TestJoyText(buffer *Buffer)
             Max = MaxU64(Max, UpdateTime);
         }
         /* sprintf((char *)DebugText, "Max Update Time(ms): %llu", Max); */
-        sprintf((char *)DebugText, "Update Time(ms): %llu", UpdateTime);
+        sprintf((char *)DebugText, "Update Time %llums", UpdateTime);
         /* sprintf((char *)DebugText, "Sleep Time(ms): %llu", SleepTime); */
         SDL_Delay(SleepTime);
     }
