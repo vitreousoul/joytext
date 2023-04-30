@@ -3,16 +3,18 @@
 #define SCREEN_WIDTH 400
 #define SCREEN_HEIGHT 500
 
-unsigned char ttf_buffer[1<<20];
-unsigned char temp_bitmap[512*512];
+#define FONT_HEIGHT_IN_PIXELS 24.0
+
+u8 ttf_buffer[1<<20];
+u8 temp_bitmap[512*512];
 
 stbtt_bakedchar cdata[96]; // ASCII 32..126 is 95 glyphs
 GLuint ftex;
 
-static void my_stbtt_initfont(void)
+static void InitFont(void)
 {
     fread(ttf_buffer, 1, 1<<20, fopen("../fonts/Arial Black.ttf", "rb"));
-    stbtt_BakeFontBitmap(ttf_buffer,0, 32.0, temp_bitmap,512,512, 32,96, cdata); // no guarantee this fits!
+    stbtt_BakeFontBitmap(ttf_buffer,0, FONT_HEIGHT_IN_PIXELS, temp_bitmap,512,512, 32,96, cdata); // no guarantee this fits!
     // can free ttf_buffer at this point
     glGenTextures(1, &ftex);
     glBindTexture(GL_TEXTURE_2D, ftex);
@@ -21,19 +23,37 @@ static void my_stbtt_initfont(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 }
 
-static void my_stbtt_print(float x, float y, u8 *text)
+static void PrepForDrawingText(void)
 {
-    // assume orthographic projection with units = screen pixels, origin at top left
+    glViewport(0,0,SCREEN_WIDTH,SCREEN_HEIGHT);
+    glClearColor(0.30f,0.20f,0.30f,0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
+    glOrtho(0,SCREEN_WIDTH,SCREEN_HEIGHT,0,-1,1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_TEXTURE_2D);
+}
+
+static void PrintText(float x, float y, u8 text[])
+{
+    PrepForDrawingText();
+    glColor3f(1,1,1);
     glBindTexture(GL_TEXTURE_2D, ftex);
     glBegin(GL_QUADS);
-    glColor3f(1, 0.1, 0.1);
-    while (*text) {
-        if (*text >= 32 && *text < 128) {
+    glColor3f(0.80, 0.90, 0.90);
+    while (*text)
+    {
+        if (*text >= 32 && *text < 128)
+        {
             stbtt_aligned_quad q;
             stbtt_GetBakedQuad(cdata, 512,512, *text-32, &x,&y,&q,1);//1=opengl & d3d10+,0=d3d9
             glTexCoord2f(q.s0,q.t0); glVertex2f(q.x0,q.y0);
@@ -64,10 +84,6 @@ static b32 InitGL()
     GLenum error = GL_NO_ERROR;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
     error = glGetError();
     if(error != GL_NO_ERROR)
     {
@@ -83,12 +99,9 @@ static b32 InitGL()
     return success;
 }
 
-static void DeInit(SDL_Window *Window/*, u32 VertexArray, u32 VertexBuffer, u32 ElementBuffer*/)
+static void DeInit(SDL_Window *Window)
 {
     printf("DeInit\n");
-    /* glDeleteVertexArrays(1, &VertexArray); */
-    /* glDeleteBuffers(1, &VertexBuffer); */
-    /* glDeleteBuffers(1, &ElementBuffer); */
     SDL_DestroyWindow(Window);
     SDL_Quit();
 }
@@ -132,45 +145,15 @@ static void HandleEvents(state *State)
     }
 }
 
-static void draw(void)
-{
-   glViewport(0,0,SCREEN_WIDTH,SCREEN_HEIGHT);
-   glClearColor(0.45f,0.45f,0.75f,0);
-   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-   glDisable(GL_CULL_FACE);
-   glDisable(GL_DEPTH_TEST);
-   glDisable(GL_BLEND);
-
-   glMatrixMode(GL_PROJECTION);
-   glLoadIdentity();
-   glOrtho(0,SCREEN_WIDTH,SCREEN_HEIGHT,0,-1,1);
-   glMatrixMode(GL_MODELVIEW);
-   glLoadIdentity();
-
-   glEnable(GL_TEXTURE_2D);
-   glEnable(GL_BLEND);
-   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-   glColor3f(1,1,1);
-
-   // show font bitmap
-   glBegin(GL_QUADS);
-      glTexCoord2f(0,0); glVertex2f(256,200+0);
-      glTexCoord2f(1,0); glVertex2f(768,200+0);
-      glTexCoord2f(1,1); glVertex2f(768,200+512);
-      glTexCoord2f(0,1); glVertex2f(256,200+512);
-   glEnd();
-}
-
 static result TestJoyText(void)
 {
     result Result = result_Ok;
-    /* GLuint ID; */
-    /* u32 VertexBuffer, VertexArray, ElementBuffer, */
     u32 DelayInMilliseconds = 16;
     state State;
     SDL_Window *Window;
     SDL_GLContext GLContext;
     result InitResult = Init();
+    char DEBUG_TextBuffer[1024];
     if(InitResult == result_Error)
     {
         printf("Init error");
@@ -189,24 +172,17 @@ static result TestJoyText(void)
         printf("Warning: Unable to set VSync! SDL Error: %s\n", SDL_GetError());
     }
     InitGL();
-    my_stbtt_initfont();
-    /* ID = glCreateProgram(); */
-    /* SetupShaders(ID); */
-    /* SetupTextures(ID, &VertexBuffer, &VertexArray, &ElementBuffer, &texture); */
+    InitFont();
     SDL_ShowWindow(Window);
     while(State.Running)
     {
         HandleEvents(&State);
-        /* glClearColor(0.8, 0.79, 0.8, 1.0f); */
-        /* glClear(GL_COLOR_BUFFER_BIT); */
-
-        /* UpdateAndRender(ID, &State, VertexArray, VertexBuffer, ElementBuffer); */
-        draw();
-        /* my_stbtt_print(-0.5, -0.5, (u8 *)"Hello, world"); */
+        sprintf(DEBUG_TextBuffer, "%llu", SDL_GetTicks64());
+        PrintText(10.0, 20.0, (u8 *)"PjtjLT");
         SDL_GL_SwapWindow(Window);
         SDL_Delay(DelayInMilliseconds); // TODO: figure out when to sleep, only when non-vsync?
     }
-    DeInit(Window/*, VertexArray, VertexBuffer, ElementBuffer*/);
+    DeInit(Window);
     return Result;
 }
 
