@@ -78,11 +78,9 @@ static void PrepForDrawingText(void)
 static void PrintText(float x, float y, u8 text[], s32 Count)
 {
     s32 I;
-    glColor3f(1,1,1);
     glBindTexture(GL_TEXTURE_2D, ftex);
     glBegin(GL_QUADS);
-    glColor3f(0.80, 0.90, 0.90);
-    for(I = 0; I < Count; ++I)
+    for(I = 0; Count < 0 ? text[I] : I < Count; ++I)
     {
         stbtt_aligned_quad q;
         stbtt_GetBakedQuad(cdata, 512,512, text[I]-32, &x,&y,&q,1);//1=opengl & d3d10+,0=d3d9
@@ -198,10 +196,12 @@ static void HandleEvents(state *State)
     }
 }
 
+u8 DebugText[1024];
 static result TestJoyText(buffer *Buffer)
 {
     result Result = result_Ok;
     u32 DelayInMilliseconds = 16;
+    u64 SleepTime, Now, UpdateTime, Max = 0;
     state State;
     State.Running = 1;
     State.StartingBaseline = 24;
@@ -228,12 +228,27 @@ static result TestJoyText(buffer *Buffer)
     InitGL();
     InitFont();
     SDL_ShowWindow(Window);
+    u32 IterCount = 0;
     while(State.Running)
     {
+        Now = SDL_GetTicks64();
         HandleEvents(&State);
+        glColor3f(0.80, 0.90, 0.90);
         PrintBuffer(&State, Buffer);
+        glColor3f(0,0,0);
+        PrintText(0, 20, DebugText, -1);
         SDL_GL_SwapWindow(Window);
-        SDL_Delay(DelayInMilliseconds); // TODO: figure out when to sleep, only when non-vsync?
+        UpdateTime = SDL_GetTicks64() - Now;
+        SleepTime = DelayInMilliseconds - UpdateTime;
+        SleepTime = ClampU64(1, SleepTime, DelayInMilliseconds);
+        if(IterCount++ > 16)
+        {
+            Max = MaxU64(Max, UpdateTime);
+        }
+        /* sprintf((char *)DebugText, "Max Update Time(ms): %llu", Max); */
+        sprintf((char *)DebugText, "Update Time(ms): %llu", UpdateTime);
+        /* sprintf((char *)DebugText, "Sleep Time(ms): %llu", SleepTime); */
+        SDL_Delay(SleepTime);
     }
     DeInit(Window);
     return Result;
