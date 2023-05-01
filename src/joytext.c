@@ -1,7 +1,7 @@
 #include "joytext.h"
 
-#define SCREEN_WIDTH 600
-#define SCREEN_HEIGHT 700
+const s32 SCREEN_WIDTH = 800;
+const s32 SCREEN_HEIGHT = 700;
 
 #define FONT_HEIGHT_IN_PIXELS 24.0
 #define FONT_HEIGHT_IN_PIXELS_INT 24
@@ -15,10 +15,12 @@ GLuint ftex;
 static buffer *AllocateBuffer(s32 Count)
 {
     s32 CharCount = Count + 1;
-    size AllocationSize = sizeof(buffer) + (CharCount * sizeof(u8));
-    buffer *Result = malloc(AllocationSize);
+    buffer *Result = malloc(sizeof(buffer));
+    u8 *Data = malloc(sizeof(u8) * Count);
+    memset(Data, 0, Count);
     Result->Count = CharCount;
-    Result->Data = (u8 *)(Result + sizeof(buffer));
+    Result->Data = Data;
+    Result->Data[Count] = 0;
     return Result;
 }
 
@@ -106,7 +108,7 @@ static void PrintBuffer(state *State, buffer *Buffer, s32 OffsetY)
         u8 Char = Buffer->Data[I];
         if(Char == '\n')
         {
-            b32 LineVisible = Baseline > -FONT_HEIGHT_IN_PIXELS_INT && Baseline < SCREEN_HEIGHT;
+            b32 LineVisible = Baseline > -FONT_HEIGHT_IN_PIXELS_INT && Baseline < SCREEN_HEIGHT + 200;
             if(LineVisible)
             {
                 sprintf(DEBUGTEXT, "%d", LineNumber);
