@@ -26,4 +26,5 @@ typedef struct
 {
     b32 Running;
     s32 StartingBaseline;
+    s32 CurrentLine;
 } state;

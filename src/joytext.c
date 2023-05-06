@@ -95,32 +95,52 @@ static void PrintText(float x, float y, u8 text[], s32 Count)
     glEnd();
 }
 
-char DEBUGTEXT[64];
-static void PrintBuffer(state *State, buffer *Buffer, s32 OffsetY)
+static s32 GetLineCount(buffer *Buffer)
 {
-    u8 *Text = Buffer->Data;
-    s32 I;
-    s32 LineNumber = 1, Count = 0, Baseline = State->StartingBaseline;
-    memset(DEBUGTEXT, 0, 64);
-    PrepForDrawingText();
+    s32 I, LineCount = 1;
     for(I = 0; I < Buffer->Count; ++I)
     {
-        u8 Char = Buffer->Data[I];
-        if(Char == '\n')
+        if(Buffer->Data[I] == '\n')
         {
-            b32 LineVisible = Baseline > -FONT_HEIGHT_IN_PIXELS_INT && Baseline < SCREEN_HEIGHT + 200;
-            if(LineVisible)
-            {
-                sprintf(DEBUGTEXT, "%d", LineNumber);
-                PrintText(0, Baseline + OffsetY, (u8 *)DEBUGTEXT, 64);
-                PrintText(64, Baseline + OffsetY, Text, Count);
-            }
-            ++LineNumber;
-            Text = &Buffer->Data[I] + 1;
-            Count = 0;
-            Baseline += FONT_HEIGHT_IN_PIXELS_INT;
+            ++LineCount;
         }
-        ++Count;
+    }
+    return LineCount;
+}
+
+static void SetLineOffsets(buffer *Buffer, s32 LineOffsets[])
+{
+    s32 I, CurrentLine = 1;
+    LineOffsets[0] = 0; // first line is always zero-offset
+    for(I = 0; I < Buffer->Count; ++I)
+    {
+        if(Buffer->Data[I] == '\n')
+        {
+            LineOffsets[CurrentLine] = I + 1;
+            ++CurrentLine;
+        }
+    }
+}
+
+static void DrawBuffer(state *State, buffer *Buffer, s32 LineOffsets[], s32 LineCount, s32 OffsetY)
+{
+    s32 I = 0;
+    s32 LinesNeeded = (SCREEN_HEIGHT / FONT_HEIGHT_IN_PIXELS_INT) + 8;
+    PrepForDrawingText();
+    for(I = 0; I < LinesNeeded; ++I)
+    {
+        s32 LineIndex = State->CurrentLine + I;
+        s32 LineOffset = LineOffsets[State->CurrentLine+I];
+        if(LineOffset >= 0 && LineOffset < Buffer->Count)
+        {
+            s32 IsLastLine = LineIndex == LineCount - 1;
+            s32 NextOffset = IsLastLine ? Buffer->Count : LineOffsets[LineIndex+1];
+            s32 LineLength = NextOffset - LineOffset;
+            if(LineOffset + LineLength < Buffer->Count)
+            {
+                PrintText(0, FONT_HEIGHT_IN_PIXELS_INT*I + OffsetY, &Buffer->Data[LineOffset], LineLength);
+            }
+        }
     }
 }
 
@@ -179,11 +199,13 @@ static void HandleEvents(state *State)
             case SDLK_j:
             {
                 State->StartingBaseline -= FONT_HEIGHT_IN_PIXELS;
+                State->CurrentLine += 1;
             } break;
             case SDLK_UP:
             case SDLK_k:
             {
                 State->StartingBaseline += FONT_HEIGHT_IN_PIXELS;
+                State->CurrentLine -= 1;
             } break;
             }
         } break;
@@ -211,7 +233,7 @@ static void HandleEvents(state *State)
 }
 
 u8 DebugText[1024];
-static result TestJoyText(buffer *Buffer)
+static result TestJoyText(buffer *Buffer, s32 LineOffsets[], s32 LineCount)
 {
     result Result = result_Ok;
     u32 DelayInMilliseconds = 16;
@@ -220,6 +242,7 @@ static result TestJoyText(buffer *Buffer)
     state State;
     State.Running = 1;
     State.StartingBaseline = 24;
+    State.CurrentLine = 0;
     SDL_Window *Window;
     SDL_GLContext GLContext;
     result InitResult = Init();
@@ -249,7 +272,8 @@ static result TestJoyText(buffer *Buffer)
         Now = SDL_GetTicks64();
         HandleEvents(&State);
         glColor3f(0.80, 0.90, 0.90);
-        PrintBuffer(&State, Buffer, DebugDisplayHeight);
+        DrawBuffer(&State, Buffer, LineOffsets, LineCount, DebugDisplayHeight);
+        /* PrintBuffer(&State, Buffer, DebugDisplayHeight); */
         glColor3f(0,0,0);
         PrintText(0, 20, DebugText, -1);
         SDL_GL_SwapWindow(Window);
@@ -261,7 +285,8 @@ static result TestJoyText(buffer *Buffer)
             Max = MaxU64(Max, UpdateTime);
         }
         /* sprintf((char *)DebugText, "Max Update Time(ms): %llu", Max); */
-        sprintf((char *)DebugText, "Update Time %llums", UpdateTime);
+        sprintf((char *)DebugText, "[Update Time %llums] [Sleep Time: %llu]", UpdateTime, SleepTime);
+        /* sprintf((char *)DebugText, "Current Line %d", State.CurrentLine); */
         /* sprintf((char *)DebugText, "Sleep Time(ms): %llu", SleepTime); */
         SDL_Delay(SleepTime);
     }
@@ -272,11 +297,17 @@ static result TestJoyText(buffer *Buffer)
 int main(void)
 {
     s32 Result = 0;
-    buffer *Buffer = ReadFileIntoBuffer("../src/joytext.c");
+    char *FilePath = "../src/joytext.c";
+    /* char *FilePath = "../ECMAScript_2022_Language_Specification.html"; */
+    buffer *Buffer = ReadFileIntoBuffer(FilePath);
     if(!Buffer)
     {
         printf("ERROR reading file into buffer\n");
     }
-    TestJoyText(Buffer);
+    s32 LineCount = GetLineCount(Buffer);
+    s32 LineOffsets[LineCount];
+    SetLineOffsets(Buffer, LineOffsets);
+    /* { s32 I; for(I = 0; I < LineCount; ++I) { if(LineOffsets[I] >= 0 && LineOffsets[I] < Buffer->Count) { printf("%c\n", Buffer->Data[LineOffsets[I]]); } } } */
+    TestJoyText(Buffer, LineOffsets, LineCount);
     return Result;
 }
